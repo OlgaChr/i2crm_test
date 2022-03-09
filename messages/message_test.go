@@ -1,9 +1,9 @@
 package messages
 
 import (
-	"fmt"
 	"sync"
 	"testing"
+	"time"
 )
 
 type TestUpsertCase struct {
@@ -29,7 +29,7 @@ func TestUpsert(t *testing.T) {
 	}
 
 	wg := &sync.WaitGroup{}
-	wg.Add(4)
+	wg.Add(3)
 	// добавлены три сообщения
 	go func(wg *sync.WaitGroup, storage *ChatStorage, second *Message) {
 		storage.Upsert(second)
@@ -44,6 +44,8 @@ func TestUpsert(t *testing.T) {
 		wg.Done()
 	}(wg, storage, third)
 
+	wg.Wait()
+	wg.Add(1)
 	go func(wg *sync.WaitGroup, storage *ChatStorage) {
 		// после добавления должно удалиться первое сообщение, т.к. переполнение хранилища
 		storage.Upsert(&Message{
@@ -53,24 +55,24 @@ func TestUpsert(t *testing.T) {
 		wg.Done()
 	}(wg, storage)
 
-	wg.Wait()
-
-	if len(storage.storage) != 3 {
-		fmt.Errorf("Error insert elements. Expected len = 3, get %d", len(storage.storage))
-	}
-	_, exist := storage.storage["first"]
-	if exist {
-		fmt.Errorf("Error insert 4th message. Expected deleted 'first', but first exist")
-	}
-
 	// это не должно добавиться - если сообщение уже существует, то ничего не должно произойти
 	storage.Upsert(&Message{
 		Key:           "second",
 		UnixTimestamp: 4,
 	})
+	wg.Wait()
+
 	s := storage.storage["second"]
 	if s.message != second {
-		fmt.Errorf("Error insert duplicate message")
+		t.Errorf("Error insert duplicate message. New value written")
+	}
+
+	if len(storage.storage) != 3 {
+		t.Errorf("Error insert elements. Expected storage len = 3, get %d", len(storage.storage))
+	}
+	_, exist := storage.storage["first"]
+	if exist {
+		t.Errorf("Error insert 4th message. Expected deleted 'first', but first exist")
 	}
 }
 
@@ -100,12 +102,14 @@ func TestLast(t *testing.T) {
 
 	// добавлены три сообщения
 	storage.Upsert(first)
+	time.Sleep(1 * time.Microsecond)
 	storage.Upsert(second)
+	time.Sleep(1 * time.Microsecond)
 	storage.Upsert(third)
 
 	last := storage.Last()
 	if last != third {
-		fmt.Errorf("Wrong last element. Expected 'third'")
+		t.Errorf("Wrong last element. Expected 'third', get '%s'", last.Key)
 	}
 
 	// 4ое новее остальных
@@ -113,7 +117,7 @@ func TestLast(t *testing.T) {
 
 	last = storage.Last()
 	if last != fourth {
-		fmt.Errorf("Wrong last element. Expected 'fourth'")
+		t.Errorf("Wrong last element. Expected 'fourth'")
 	}
 
 	// 5ое старше 4ого
@@ -121,7 +125,7 @@ func TestLast(t *testing.T) {
 
 	last = storage.Last()
 	if last != fourth {
-		fmt.Errorf("Wrong last element. Expected 'fourth'")
+		t.Errorf("Wrong last element. Expected 'fourth'")
 	}
 }
 
@@ -149,6 +153,6 @@ func TestDelete(t *testing.T) {
 
 	_, exist := storage.storage["second"]
 	if exist {
-		fmt.Errorf("Error delete element")
+		t.Errorf("Error delete element")
 	}
 }
